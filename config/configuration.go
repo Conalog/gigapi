@@ -16,6 +16,7 @@ type GigapiConfiguration struct {
 	AllowSaveToHD bool    `json:"allow_save_to_hd" mapstructure:"allow_save_to_hd" default:"true"`
 	SaveTimeoutS  float64 `json:"save_timeout_s" mapstructure:"save_timeout_s" default:"1"`
 	NoMerges      bool    `json:"no_merges" mapstructure:"no_merges" default:"false"`
+	Partition     string  `json:"partition" mapstructure:"partition" default:"day"`
 }
 
 type Configuration struct {

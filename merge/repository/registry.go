@@ -104,19 +104,31 @@ func RegisterSimpleTable(db, name string) error {
 				return nil, fmt.Errorf("column '__timestamp' has non-int64 data type")
 			}
 
+			partition := config.Config.Gigapi.Partition
+			includeHour := partition == "day,hour"
+
+			var divisor int64 = 86400000000000 // day (ns)
+			if includeHour {
+				divisor = 3600000000000 // hour (ns)
+			}
+
 			parts := make(map[int64]*shared.PartitionDesc)
 			lastPartId := int64(0)
 			var lastPart *shared.PartitionDesc
 			for i, ts := range tsData {
-				id := int64(ts / 86400000000000)
+				id := int64(ts / divisor)
 				if lastPart == nil || lastPartId != id {
 					lastPartId = id
 					if _, ok := parts[id]; !ok {
+						t := time.Unix(0, ts).UTC()
+						values := [][2]string{
+							{"date", t.Format("2006-01-02")},
+						}
+						if includeHour {
+							values = append(values, [2]string{"hour", t.Format("15")})
+						}
 						parts[id] = &shared.PartitionDesc{
-							Values: [][2]string{
-								{"date", time.Unix(0, ts).UTC().Format("2006-01-02")},
-								{"hour", time.Unix(0, ts).UTC().Format("15")},
-							},
+							Values:   values,
 							IndexMap: make([]byte, (len(tsData)+7)/8),
 						}
 					}
