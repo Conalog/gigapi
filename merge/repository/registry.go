@@ -64,6 +64,55 @@ func RunMerge() {
 var tableNameCheck = regexp.MustCompile(`^[a-zA-Z0-9_]+$`)
 var m sync.Mutex
 
+func parsePartitionMode(partition string) (int64, bool, error) {
+	switch strings.TrimSpace(partition) {
+	case "day":
+		return int64(24 * time.Hour), false, nil
+	case "day,hour":
+		return int64(time.Hour), true, nil
+	default:
+		return 0, false, fmt.Errorf("unsupported partition option: %q. Supported: \"day\", \"day,hour\"", partition)
+	}
+}
+
+func buildPartitionDescs(tsData []int64, partition string) ([]shared.PartitionDesc, error) {
+	divisor, includeHour, err := parsePartitionMode(partition)
+	if err != nil {
+		return nil, err
+	}
+
+	parts := make(map[int64]*shared.PartitionDesc)
+	lastPartID := int64(0)
+	var lastPart *shared.PartitionDesc
+	for i, ts := range tsData {
+		id := ts / divisor
+		if lastPart == nil || lastPartID != id {
+			lastPartID = id
+			if _, ok := parts[id]; !ok {
+				timestamp := time.Unix(0, ts).UTC()
+				values := [][2]string{
+					{"date", timestamp.Format("2006-01-02")},
+				}
+				if includeHour {
+					values = append(values, [2]string{"hour", timestamp.Format("15")})
+				}
+				parts[id] = &shared.PartitionDesc{
+					Values:   values,
+					IndexMap: make([]byte, (len(tsData)+7)/8),
+				}
+			}
+			lastPart = parts[id]
+		}
+		lastPart.IndexMap[i/8] |= 1 << (uint(i) % 8)
+	}
+
+	res := make([]shared.PartitionDesc, 0, len(parts))
+	for _, desc := range parts {
+		res = append(res, *desc)
+	}
+	return res, nil
+}
+
 func Store(db string, name string, columns map[string]any) utils.Promise[int32] {
 	if db == "" {
 		db = "default"
@@ -104,31 +153,7 @@ func RegisterSimpleTable(db, name string) error {
 				return nil, fmt.Errorf("column '__timestamp' has non-int64 data type")
 			}
 
-			parts := make(map[int64]*shared.PartitionDesc)
-			lastPartId := int64(0)
-			var lastPart *shared.PartitionDesc
-			for i, ts := range tsData {
-				id := int64(ts / 86400000000000)
-				if lastPart == nil || lastPartId != id {
-					lastPartId = id
-					if _, ok := parts[id]; !ok {
-						parts[id] = &shared.PartitionDesc{
-							Values: [][2]string{
-								{"date", time.Unix(0, ts).UTC().Format("2006-01-02")},
-								{"hour", time.Unix(0, ts).UTC().Format("15")},
-							},
-							IndexMap: make([]byte, (len(tsData)+7)/8),
-						}
-					}
-					lastPart = parts[id]
-				}
-				lastPart.IndexMap[i/8] |= 1 << (uint(i) % 8)
-			}
-			res := make([]shared.PartitionDesc, 0, len(parts))
-			for _, desc := range parts {
-				res = append(res, *desc)
-			}
-			return res, nil
+			return buildPartitionDescs(tsData, config.Config.Gigapi.Partition)
 
 		},
 		AutoTimestamp: true,

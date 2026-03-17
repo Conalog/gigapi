@@ -58,6 +58,7 @@ services:
 | GIGAPI_MERGE_TIMEOUT_S | Merge timeout in seconds                    | 10                  |
 | GIGAPI_SAVE_TIMEOUT_S  | Save timeout in seconds                     | 1.0                 |
 | GIGAPI_NO_MERGES       | Disables merges when set to true            | false               |
+| GIGAPI_PARTITION       | Hive partition mode: `day` or `day,hour`    | day                 |
 | PORT                   | Port number for the server to listen on     | 7971                |
 
 
